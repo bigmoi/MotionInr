@@ -1,0 +1,97 @@
+seed_everything: 42
+configname: dct_ddim_h36m
+model:
+  target: Models.motionInr.MotionINR
+  params:
+    t_his: 25
+    t_pred: 100
+    n_pre:  20
+    beta_mpjpe:  1.0
+    lr: 1e-4
+    weight_decay: 1e-4
+
+    denoiser:
+      target: modules.diffusions.Denoisers.denoiser.MotionTransformer
+      params:
+        input_feats : 48
+        num_frames: 20
+        latent_dim : 512
+        ff_size : 1024
+        num_layers : 9
+        num_heads : 8
+        dropout : 0.2
+        activation : "gelu"
+    diffusion:
+      target: modules.diffusions.DDIM.Diffusion
+      params:
+        noise_steps : 1000
+        beta_start : 1e-4
+        beta_end: 0.02
+        motion_size: [20, 48]
+        device: "cuda"
+        padding: 'LastFrame'
+        EnableComplete : True
+        ddim_timesteps: 100
+        scheduler: 'Cosine'
+        model_type: 'data'
+        mod_enable: True
+        mod_test: 0.5
+
+    decoder:
+      target: modules.decoder.decoders.TransInr1D
+      params:
+        n_groups : 64
+        data_shape : [100,48]   #
+        update_strategy : 'scale'
+        mod_bias : 0
+        inr:
+          target: modules.inr.inr_mlp.InrMlp
+          params:
+            in_dim: 1
+            out_dim: 48
+            out_bias: 0.5
+            depth: 5
+            hidden_dim: 256
+        tokenizer:
+          target: modules.tokenizer.empty_tokenizer.empty_tokenizer #not use here
+          params:
+            param : None
+        transformer:
+          target: modules.transformerdecoder.transformer.Transformer
+          params:
+            dim: 48
+            encoder_depth: 6
+            decoder_depth: 6
+            n_head: 6
+            head_dim: 48
+            ff_dim: 768
+
+data:
+  target: 'modules.datamodules.datamodule.DataModule'
+  params:
+    mode : 'train'
+    dataset_use:
+      target: 'modules.datasets.h36mdataset.DatasetH36M'
+      params:
+        data_path: 'data/data_3d_h36m.npz'
+        t_his: 25
+        t_pred: 100
+        actions: 'all'
+        mode : 'train'
+#        normalize: true
+#        use_joins_num: 17
+    batch_size: 32
+    num_workers: 4
+
+
+
+trainer:
+  max_epochs: 60
+  accelerator: "gpu"
+  devices: 1
+  precision: 32
+  log_every_n_steps: 50
+
+logger:
+  target: pytorch_lightning.loggers.WandbLogger
+  params: {project: motion, name: run1, save_dir: ./logs}
